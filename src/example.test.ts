@@ -68,6 +68,21 @@ test('transactional fail, because non-populated relation on a fetch entity', asy
   })
 });
 
+test('transactional success, because of clear:true option', async () => {
+  const user1 = new User('Bar', 'Foo');
+  await orm.em.persistAndFlush(user1);
+  orm.em.clear();
+
+  const notification = new Notification(user1);
+  await orm.em.persistAndFlush(notification);
+  orm.em.clear();
+
+  await orm.em.findOneOrFail(Notification, { id: notification.id });
+  await orm.em.transactional(async () => {
+    // ...
+}, { clear: true })
+});
+
 test('transactional success, thanks to em.clear()', async () => {
   const user1 = new User('Bar', 'Foo');
   await orm.em.persistAndFlush(user1);
