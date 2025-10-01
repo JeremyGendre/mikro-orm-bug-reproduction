@@ -53,7 +53,7 @@ afterAll(async () => {
   await orm.close(true);
 });
 
-test('transactional fail on getter property', async () => {
+test('transactional fail, because non-populated relation on a fetch entity', async () => {
   const user1 = new User('Bar', 'Foo');
   await orm.em.persistAndFlush(user1);
   orm.em.clear();
@@ -62,13 +62,29 @@ test('transactional fail on getter property', async () => {
   await orm.em.persistAndFlush(notification);
   orm.em.clear();
 
-  const fetchedNotification = await orm.em.findOneOrFail(Notification, { id: notification.id });
+  await orm.em.findOneOrFail(Notification, { id: notification.id });
   await orm.em.transactional(async () => {
-    // ... do anything, this will fail
+    // ...
   })
 });
 
-test('transactional success on getter property', async () => {
+test('transactional success, thanks to em.clear()', async () => {
+  const user1 = new User('Bar', 'Foo');
+  await orm.em.persistAndFlush(user1);
+  orm.em.clear();
+
+  const notification = new Notification(user1);
+  await orm.em.persistAndFlush(notification);
+  orm.em.clear();
+  
+  await orm.em.findOneOrFail(Notification, { id: notification.id });
+  orm.em.clear();
+  await orm.em.transactional(async () => {
+    // ...
+  })
+});
+
+test('transactional success, because no fetched entity in context', async () => {
   const user1 = new User('Bar', 'Foo');
   await orm.em.persistAndFlush(user1);
   orm.em.clear();
@@ -77,8 +93,8 @@ test('transactional success on getter property', async () => {
   await orm.em.persistAndFlush(notification);
   orm.em.clear();
 
-  const fetchedNotification = await orm.em.findOneOrFail(Notification, { id: notification.id }, { populate: ['recipient'] });
+  await orm.em.findOneOrFail(Notification, { id: notification.id }, { populate: ['recipient'] });
   await orm.em.transactional(async () => {
-    // ... do anything, this will not fail
+    // ...
   })
 });
