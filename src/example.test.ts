@@ -1,4 +1,4 @@
-import { Entity, MikroORM, PrimaryKey, Property } from '@mikro-orm/sqlite';
+import { Entity, ManyToOne, MikroORM, PrimaryKey, Property } from '@mikro-orm/sqlite';
 
 @Entity()
 class User {
@@ -7,16 +7,34 @@ class User {
   id!: number;
 
   @Property()
-  name: string;
+  firstName: string;
 
-  @Property({ unique: true })
-  email: string;
+  @Property()
+  lastName: string;
 
-  constructor(name: string, email: string) {
-    this.name = name;
-    this.email = email;
+  @Property({ persist: false })
+  get initials(): string {
+    return (this.firstName[0] || '') + (this.lastName[0] || '');
   }
 
+  constructor(lastName: string, firstName: string) {
+    this.lastName = lastName;
+    this.firstName = firstName;
+  }
+}
+
+@Entity()
+class Notification {
+
+  @PrimaryKey()
+  id!: number;
+
+  @ManyToOne(() => User)
+  recipient: User;
+
+  constructor(user: User) {
+    this.recipient = user;
+  }
 }
 
 let orm: MikroORM;
@@ -24,7 +42,7 @@ let orm: MikroORM;
 beforeAll(async () => {
   orm = await MikroORM.init({
     dbName: ':memory:',
-    entities: [User],
+    entities: [User, Notification],
     debug: ['query', 'query-params'],
     allowGlobalContext: true, // only for testing
   });
@@ -35,17 +53,32 @@ afterAll(async () => {
   await orm.close(true);
 });
 
-test('basic CRUD example', async () => {
-  orm.em.create(User, { name: 'Foo', email: 'foo' });
-  await orm.em.flush();
+test('transactional fail on getter property', async () => {
+  const user1 = new User('Bar', 'Foo');
+  await orm.em.persistAndFlush(user1);
   orm.em.clear();
 
-  const user = await orm.em.findOneOrFail(User, { email: 'foo' });
-  expect(user.name).toBe('Foo');
-  user.name = 'Bar';
-  orm.em.remove(user);
-  await orm.em.flush();
+  const notification = new Notification(user1);
+  await orm.em.persistAndFlush(notification);
+  orm.em.clear();
 
-  const count = await orm.em.count(User, { email: 'foo' });
-  expect(count).toBe(0);
+  const fetchedNotification = await orm.em.findOneOrFail(Notification, { id: notification.id });
+  await orm.em.transactional(async () => {
+    // ... do anything, this will fail
+  })
+});
+
+test('transactional success on getter property', async () => {
+  const user1 = new User('Bar', 'Foo');
+  await orm.em.persistAndFlush(user1);
+  orm.em.clear();
+
+  const notification = new Notification(user1);
+  await orm.em.persistAndFlush(notification);
+  orm.em.clear();
+
+  const fetchedNotification = await orm.em.findOneOrFail(Notification, { id: notification.id }, { populate: ['recipient'] });
+  await orm.em.transactional(async () => {
+    // ... do anything, this will not fail
+  })
 });
